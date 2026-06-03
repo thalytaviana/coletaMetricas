@@ -41,6 +41,23 @@ FIELDNAMES = [
 ]
 
 
+class _NoAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: N803
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is None:
+            return None
+
+        original_host = urllib.parse.urlparse(req.full_url).netloc
+        redirected_host = urllib.parse.urlparse(newurl).netloc
+        if original_host != redirected_host:
+            redirected.headers.pop("Authorization", None)
+            redirected.unredirected_hdrs.pop("Authorization", None)
+        return redirected
+
+
+_OPENER = urllib.request.build_opener(_NoAuthRedirectHandler)
+
+
 def _request_bytes(url: str, token: str | None, method: str = "GET") -> bytes:
     headers = {
         "Accept": "application/vnd.github+json",
@@ -51,7 +68,7 @@ def _request_bytes(url: str, token: str | None, method: str = "GET") -> bytes:
         headers["Authorization"] = f"Bearer {token}"
 
     request = urllib.request.Request(url, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with _OPENER.open(request, timeout=30) as response:
         return response.read()
 
 

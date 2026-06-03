@@ -60,8 +60,14 @@ def _save_status_rate(runs: pd.DataFrame, output_dir: Path) -> None:
     percentages = (counts / counts.sum()) * 100
 
     fig, axis = plt.subplots(figsize=(7, 5))
-    palette = ["#16a34a", "#dc2626", "#64748b"]
-    bars = axis.bar(counts.index, percentages, color=palette[: len(counts)])
+    status_colors = {
+        "success": "#16a34a",
+        "failure": "#dc2626",
+        "cancelled": "#64748b",
+        "unknown": "#64748b",
+    }
+    colors = [status_colors.get(status, "#64748b") for status in counts.index]
+    bars = axis.bar(counts.index, percentages, color=colors)
     axis.set_title("Taxa de sucesso e falha")
     axis.set_xlabel("Status")
     axis.set_ylabel("Percentual de execucoes")
