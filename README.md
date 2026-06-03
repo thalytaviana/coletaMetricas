@@ -43,6 +43,11 @@ python -m pytest --junitxml=reports/junit.xml
 3. Dispare as 12 execucoes usando o plano em `data/experiment_plan.csv`.
 4. Inclua variacoes com cache ligado/desligado, teste lento, aumento artificial de testes, falha controlada e modo paralelo/sequencial.
 
+Ha duas formas de executar as variacoes:
+
+- Por commit: altere `experiment.env`, faca commit e push. O workflow `push` le essa configuracao.
+- Por API: use `workflow_dispatch` com `scripts/dispatch_experiment_runs.py`.
+
 ```powershell
 $env:GITHUB_TOKEN="ghp_token_com_actions_write"
 python scripts/dispatch_experiment_runs.py --repo thalytaviana/coletaMetricas --workflow ci.yml --ref main

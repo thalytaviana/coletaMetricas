@@ -4,6 +4,7 @@
 
 - Repositorio GitHub: https://github.com/thalytaviana/coletaMetricas
 - Workflow YAML: https://github.com/thalytaviana/coletaMetricas/blob/main/.github/workflows/ci.yml
+- Configuracao de variacao por commit: `experiment.env`
 - Script de coleta: `scripts/collect_metrics.py`
 - Base gerada: `data/pipeline_metrics.csv`
 - Graficos: `charts/`
@@ -17,6 +18,7 @@ A hipotese inicial e que o cache reduz principalmente o tempo de instalacao de d
 ## Variacoes executadas
 
 As variacoes planejadas estao em `data/experiment_plan.csv`.
+Cada execucao pode ser gerada por `workflow_dispatch` ou por commit alterando `experiment.env`.
 
 | Execucao | Variacao | Run ID real | Commit | Status | Link |
 | --- | --- | --- | --- | --- | --- |
