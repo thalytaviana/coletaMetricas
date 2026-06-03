@@ -1,0 +1,251 @@
+name: CI Metrics Experiment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      experiment_label:
+        description: Nome da variacao executada
+        required: true
+        default: baseline_verde
+      cache_mode:
+        description: Uso de cache de dependencias
+        required: true
+        type: choice
+        options:
+          - enabled
+          - disabled
+        default: enabled
+      execution_mode:
+        description: Ordem dos jobs lint e tests
+        required: true
+        type: choice
+        options:
+          - parallel
+          - sequential
+        default: parallel
+      extra_test_cases:
+        description: Quantidade de testes gerados dinamicamente
+        required: true
+        default: "8"
+      slow_test_seconds:
+        description: Atraso artificial no teste lento
+        required: true
+        default: "0"
+      force_test_failure:
+        description: Forcar falha controlada nos testes
+        required: true
+        type: choice
+        options:
+          - "false"
+          - "true"
+        default: "false"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  EXPERIMENT_LABEL: ${{ github.event.inputs.experiment_label || 'push_default' }}
+  CACHE_MODE: ${{ github.event.inputs.cache_mode || 'enabled' }}
+  EXECUTION_MODE: ${{ github.event.inputs.execution_mode || 'parallel' }}
+  EXTRA_TEST_CASES: ${{ github.event.inputs.extra_test_cases || '8' }}
+  SLOW_TEST_SECONDS: ${{ github.event.inputs.slow_test_seconds || '0' }}
+  FORCE_TEST_FAILURE: ${{ github.event.inputs.force_test_failure || 'false' }}
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Restore pip cache
+        if: env.CACHE_MODE == 'enabled'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run ruff
+        run: ruff check .
+
+  tests:
+    name: tests-parallel
+    runs-on: ubuntu-latest
+    if: ${{ (github.event.inputs.execution_mode || 'parallel') == 'parallel' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Restore pip cache
+        if: env.CACHE_MODE == 'enabled'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        id: pytest
+        run: |
+          mkdir -p reports
+          set +e
+          pytest --junitxml=reports/junit.xml
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Summarize pytest
+        if: always()
+        run: python scripts/summarize_pytest.py reports/junit.xml --output reports/test-summary.json
+
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary-${{ github.run_id }}
+          path: reports/
+          retention-days: 14
+
+      - name: Fail when pytest failed
+        if: always() && steps.pytest.outputs.exit_code != '0'
+        run: exit ${{ steps.pytest.outputs.exit_code }}
+
+  tests_sequential:
+    name: tests-sequential
+    runs-on: ubuntu-latest
+    needs: lint
+    if: ${{ (github.event.inputs.execution_mode || 'parallel') == 'sequential' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Restore pip cache
+        if: env.CACHE_MODE == 'enabled'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        id: pytest
+        run: |
+          mkdir -p reports
+          set +e
+          pytest --junitxml=reports/junit.xml
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Summarize pytest
+        if: always()
+        run: python scripts/summarize_pytest.py reports/junit.xml --output reports/test-summary.json
+
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary-${{ github.run_id }}
+          path: reports/
+          retention-days: 14
+
+      - name: Fail when pytest failed
+        if: always() && steps.pytest.outputs.exit_code != '0'
+        run: exit ${{ steps.pytest.outputs.exit_code }}
+
+  package-metrics:
+    name: package-metrics
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [lint, tests, tests_sequential]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create workflow context
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          TESTS_PARALLEL_RESULT: ${{ needs.tests.result }}
+          TESTS_SEQUENTIAL_RESULT: ${{ needs.tests_sequential.result }}
+        run: |
+          mkdir -p reports dist
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          context = {
+              "run_id": os.getenv("GITHUB_RUN_ID"),
+              "run_number": os.getenv("GITHUB_RUN_NUMBER"),
+              "workflow": os.getenv("GITHUB_WORKFLOW"),
+              "commit_sha": os.getenv("GITHUB_SHA"),
+              "ref": os.getenv("GITHUB_REF_NAME"),
+              "actor": os.getenv("GITHUB_ACTOR"),
+              "generated_at": datetime.now(UTC).isoformat(),
+              "experiment_label": os.getenv("EXPERIMENT_LABEL"),
+              "cache_mode": os.getenv("CACHE_MODE"),
+              "execution_mode": os.getenv("EXECUTION_MODE"),
+              "extra_test_cases": os.getenv("EXTRA_TEST_CASES"),
+              "slow_test_seconds": os.getenv("SLOW_TEST_SECONDS"),
+              "force_test_failure": os.getenv("FORCE_TEST_FAILURE"),
+              "jobs": {
+                  "lint": os.getenv("LINT_RESULT"),
+                  "tests_parallel": os.getenv("TESTS_PARALLEL_RESULT"),
+                  "tests_sequential": os.getenv("TESTS_SEQUENTIAL_RESULT"),
+              },
+          }
+
+          Path("reports/workflow-context.json").write_text(
+              json.dumps(context, indent=2),
+              encoding="utf-8",
+          )
+          PY
+          tar -czf "dist/pipeline-results-${GITHUB_RUN_ID}.tgz" reports
+
+      - name: Upload workflow context
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-context-${{ github.run_id }}
+          path: reports/workflow-context.json
+          retention-days: 14
+
+      - name: Upload pipeline results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-results-${{ github.run_id }}
+          path: dist/
+          retention-days: 14

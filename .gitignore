@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.egg-info/
+reports/*
+!reports/.gitkeep
+dist/
+data/*.json
+!.gitkeep
+!data/experiment_plan.csv

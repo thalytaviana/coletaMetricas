@@ -1,0 +1,13 @@
+run_index,variation,cache_mode,execution_mode,extra_test_cases,slow_test_seconds,force_test_failure,hypothesis
+1,baseline_verde,enabled,parallel,8,0,false,Pipeline verde com duracao base.
+2,baseline_repetido_cache_quente,enabled,parallel,8,0,false,Cache deve reduzir tempo de instalacao apos a primeira execucao.
+3,cache_desligado,disabled,parallel,8,0,false,Sem cache a instalacao deve ficar mais lenta.
+4,mais_testes,enabled,parallel,40,0,false,Aumentar testes deve elevar duracao do job de testes.
+5,muitos_testes,enabled,parallel,120,0,false,Volume maior deve elevar tempo de pytest e duracao total.
+6,teste_lento_1s,enabled,parallel,8,1,false,Teste lento deve aparecer como gargalo no job de testes.
+7,teste_lento_3s,enabled,parallel,8,3,false,Teste lento deve aumentar fortemente a duracao do pipeline.
+8,falha_controlada,enabled,parallel,8,0,true,Pipeline deve falhar e ainda assim publicar artefatos de teste.
+9,recuperacao_pos_falha,enabled,parallel,8,0,false,Pipeline deve voltar a ficar verde apos remover falha.
+10,cache_desligado_com_muitos_testes,disabled,parallel,80,0,false,Sem cache e com mais testes deve combinar dois custos.
+11,paralelo_com_muitos_testes,enabled,parallel,80,0,false,Execucao paralela para comparar diretamente com modo sequencial.
+12,sequencial_com_muitos_testes,enabled,sequential,80,0,false,Modo sequencial deve aumentar a duracao total quando lint e testes nao se sobrepoem.
